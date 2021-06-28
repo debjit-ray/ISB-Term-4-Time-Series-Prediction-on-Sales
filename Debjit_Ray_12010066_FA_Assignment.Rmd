@@ -1,0 +1,327 @@
+---
+title: "Debjit_Ray_12010066_FA_Assignment"
+author: "Debjit Ray"
+date: "10/05/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+### ___Consider the data set SouvenirSales.xls (1995 Jan -2001 Dec) that gives the monthly sales of souvenir at a shop in New York. Back in 2001, an analyst was appointed to forecast sales for the next 12 months (Year 2002). The analyst portioned the data by keeping the last 12 months of data (year 2001) as validation set, and the remaining data as training set.___  
+
+```{r Read Input File}
+library(readxl)
+setwd("C:/Debjit/ISB/05_Term-4/FA/Indiv. Assignment/")
+salesData <- read_excel("SouvenirSales.xlsx")
+str(salesData)
+```  
+
+```{r Convert data into time-series and split}  
+salesData <- ts(data = salesData$Sales, start = c(1995,1), freq=12)
+trainSet <- window(salesData, end= c(2000,12))
+testSet <- window(salesData, start= c(2001,1))
+```  
+
+ -----  
+  
+### ___a. Plot the time series of the original data. Which time series components appear from the plot.___  
+```{r Data Exploration}
+library("dygraphs")
+dygraph(salesData, main = "Souvenoir sales") %>% dyRangeSelector()
+```  
+
+#### From the graph, we can notice the following:  
+  ++ There is a ___slight upper trend___ in Sales across the years.  
+  ++ Every year there is a ___peak in sales in the month of March and December___.  
+  ++ The seasonality for the month of December seems to be Multiplicative in nature.  
+  
+```{r Additional Graphs for Data Visualization}  
+library(forecast)
+library(ggplot2)
+ggseasonplot(salesData, year.labels=TRUE, year.labels.left=TRUE) +
+  ylab("Sales") +
+  ggtitle("Seasonal plot: Souvenoir sales") +  theme(plot.title = element_text(hjust = 0.5))
+```   
+  
+#### The seasonal plot confirms our earlier observation regarding peaks in December and March.  
+
+```{r Decomposition of Time Series Components} 
+library(zoo)
+library(ggpubr)
+multPlot <- autoplot(decompose(salesData, type = "multiplicative"))
+addplot <- autoplot(decompose(salesData, type = "additive"))
+ggarrange(multPlot, addplot)
+```   
+
+ -----  
+  
+### ___b. Fit a linear trend model with additive seasonality (Model A) and exponential trend model with multiplicative seasonality (Model B). Consider January as the reference group for each model. Produce the regression coefficients and the validation set errors. Remember to fit only the training period.___   
+
+```{r ModelA -> Linear Trend with Additive Seasonality}  
+# Define the model with linear trend and additive seasonality
+modelA <- tslm(trainSet ~ trend +  season)
+# Check the model summary for the regression coefficients
+summary(modelA)
+# Predict for the validation time period using this model
+modelA_Forecast <- forecast(modelA, h=length(testSet), level = 0) 
+```  
+```{r ModelA - Plot the Actuals vs Forecasted/ Fitted graph}  
+# Plot the graphs to help understand how close our model is to the actual values.  
+# Plot the original training data (actual Sales) for the training period and the model forecasted data for the validation period
+plot(modelA_Forecast, ylab = "Sales", xlab = "Year", bty = "l", col = "darkgreen", ylim=c(0, 87000),
+     main = "ModelA - Forecasts using Linear Trend, Additive Seasonality")
+# Plot the model fitted data for the training period
+lines(modelA$fitted, lwd = 2, col = "blue")
+# Plot the actual sales data for the validation period
+lines(testSet, col = "darkgreen")
+# Add legend
+legend(1995,85000, legend=c("Original Data", "Fitted/ Forecasted Data"),  col=c("darkgreen", "blue"), lty=1:1, cex=1)
+# Add markers to distingush the training and validation period on the graph
+abline(v=c(2001), col = "red", lty = 2)
+arrows(1995,50000,2001,50000,col="brown", code=3, lty = 2)
+arrows(2001,50000,2002,50000,col="brown", code=3, lty = 2)
+text(1997.5,55000,"Training",col="brown")
+text(2001.5,55000,"Validation",col="brown")
+``` 
+```{r ModelA - Plot the residuals graph}
+# Plot the residual graph for the training period
+plot(modelA$residuals, ylab = "Forecast Errors", xlab = "Years", xlim = c(1995, 2002), col = "purple",
+     main = "ModelA - Residuals for Linear Trend, Additive Seasonality")
+# Plot the residuals/ errors for the validation period
+lines(testSet - modelA_Forecast$mean, col = "purple")
+# Add markers to distingush the training and validation period on the graph
+abline(v=c(2001), col = "red", lty = 2)
+arrows(1995,20000,2001,20000,col="brown", code=3, lty = 2)
+arrows(2001,20000,2002,20000,col="brown", code=3, lty = 2)
+text(1997.5,25000,"Training",col="brown")
+text(2001.5,25000,"Validation",col="brown")
+```  
+ 
+```{r ModelB -> Exponential Trend with Multiplicative Seasonality - Implicit Transformation}  
+# Define the model with linear trend and additive seasonality
+modelB <- tslm(trainSet ~ trend + season, lambda = 0)
+# Check the model summary for the regression coefficients
+summary(modelB)
+# Predict for the validation time period using this model
+modelB_Forecast <- forecast(modelB, h=length(testSet), level = 0) 
+```  
+```{r ModelB - Plot the Actuals vs Forecasted/ Fitted graph}  
+# Plot the graphs to help understand how close our model is to the actual values.  
+# Plot the original training data (actual Sales) for the training period and the model forecasted data for the validation period
+plot(modelB_Forecast, ylab = "Sales", xlab = "Year", bty = "l", col = "darkgreen", ylim=c(0, 87000),
+     main = "ModelB - Forecasts using Exponential Trend, Multiplicative Seasonality")
+# Plot the model fitted data for the training period
+lines(modelB$fitted, lwd = 2, col = "blue")
+# Plot the actual sales data for the validation and training period
+lines(testSet, col = "darkgreen")
+lines(trainSet, col = "darkgreen")
+# Add legend
+legend(1995,85000, legend=c("Original Data", "Fitted/ Forecasted Data"),  col=c("darkgreen", "blue"), lty=1:1, cex=1)
+# Add markers to distingush the training and validation period on the graph
+abline(v=c(2001), col = "red", lty = 2)
+arrows(1995,50000,2001,50000,col="brown", code=3, lty = 2)
+arrows(2001,50000,2002,50000,col="brown", code=3, lty = 2)
+text(1997.5,55000,"Training",col="brown")
+text(2001.5,55000,"Validation",col="brown")
+```  
+```{r ModelB - Plot the residuals graph}
+# Plot the residual graph for the training period
+plot(modelB$residuals, ylab = "Forecast Errors", xlab = "Years", xlim = c(1995, 2002), col = "purple", ylim = c(-2000, 18000),
+     main = "ModelB - Residuals for Exponential Trend, Multiplicative Seasonality")
+# Plot the residuals/ errors for the validation period
+lines(testSet - modelB_Forecast$mean, col = "purple")
+# Add markers to distingush the training and validation period on the graph
+abline(v=c(2001), col = "red", lty = 2)
+abline(v=c(2001), col = "red", lty = 2)
+arrows(1995,11000,2001,11000,col="brown", code=3, lty = 2)
+arrows(2001,11000,2002,11000,col="brown", code=3, lty = 2)
+text(1997.5,12500,"Training",col="brown")
+text(2001.5,12500,"Validation",col="brown")
+```   
+
+```{r Compare the residuals for the Forecasts}
+plot(testSet - modelA_Forecast$mean, ylab = "Forecast Errors", xlab = "Years", col = "purple", ylim = c(-6000, 80000), lwd = 2,
+     main = "Comparison of Residuals/ Errors from different Models")
+lines((testSet - modelB_Forecast$mean), col = 'orange', lwd = 2)
+# Add legend
+legend(2001,60000, legend=c("ModelA Residual", "ModelB Residual"),  col=c("purple", "orange"), lty=1:1, cex=1)
+```  
+
+
+#### Considering a Regression model with Exponential Trend and Multiplicative Seasonality can also be built using a log transformed series, we will explore to see if the model built is similar.  
+
+```{r ModelB_1 -> Exponential Trend with Multiplicative Seasonality using Transformed Series}  
+# Define the model with linear trend and additive seasonality
+modelB_1 <- tslm(log(trainSet) ~ trend + season)
+# Check the model summary for the regression coefficients
+summary(modelB_1)
+# Predict for the validation time period using this model
+modelB_1_Forecast <- forecast(modelB_1, h=length(testSet), level = 0) 
+```  
+```{r ModelB_1 - Plot the Actuals vs Forecasted/ Fitted graph}  
+# Plot the graphs to help understand how close our model is to the actual values.  
+# Plot the original training data (actual Sales) for the training period and the model forecasted data for the validation period
+plot(modelB_1_Forecast, ylab = "Log(Sales)", xlab = "Year", bty = "l", col = "darkgreen",ylim=c(5,16),
+     main = "ModelB_1 - Forecasts using Exponential Trend, Multiplicative Seasonality")
+# Plot the model fitted data for the training period
+lines(modelB_1$fitted, lwd = 2, col = "blue")
+# Plot the actual sales data for the validation period
+lines(log(testSet), col = "darkgreen")
+# Add legend
+legend(1995,15.8, legend=c("Original Data", "Fitted/ Forecasted Data"),  col=c("darkgreen", "blue"), lty=1:1, cex=1)
+# Add markers to distingush the training and validation period on the graph
+abline(v=c(2001), col = "red", lty = 2)
+arrows(1995,12.4,2001,12.4,col="brown", code=3, lty = 2)
+arrows(2001,12.4,2002,12.4,col="brown", code=3, lty = 2)
+text(1997.5,12.7,"Training",col="brown")
+text(2001.5,12.7,"Validation",col="brown")
+```  
+```{r ModelB_1 - Plot the residuals graph}
+# Plot the residual graph for the training period
+plot(modelB_1$residuals, ylab = "Forecast Errors", xlab = "Years", xlim = c(1995, 2002), col = "purple", ylim = c(-0.5, 0.7),
+     main = "ModelB_1 - Residuals for Exponential Trend, Multiplicative Seasonality")
+# Plot the residuals/ errors for the validation period
+lines(log(testSet) - modelB_1_Forecast$mean, col = "purple")
+# Add markers to distingush the training and validation period on the graph
+abline(v=c(2001), col = "red", lty = 2)
+arrows(1995,0.45,2001,0.45,col="brown", code=3, lty = 2)
+arrows(2001,0.45,2002,0.45,col="brown", code=3, lty = 2)
+text(1997.5,0.5,"Training",col="brown")
+text(2001.5,0.5,"Validation",col="brown")
+```   
+
+  ------  
+
+### ___c. Which model is the best model considering RMSE as the metric? Could you have understood this from the line chart? Explain. Produce the plot showing the forecasts from both models along with actual data. In a separate plot, present the residuals from both models (consider only the validation set residuals).___  
+
+```{r Compare the models}
+print ("Model A's Metrics")
+accuracy(modelA_Forecast, testSet)
+print ("Model B's Metrics")
+accuracy(modelB_Forecast, testSet)
+```  
+
+#### Thus based on RMSE, the Exponential Trend with Multiplicative Seasonality model is performing much better than the Linear Trend with Additive Seasonality model.  
+#### Even though our hunch regarding the Seasonality being multiplicative seems to be true, our hunch related to Trend seems to be incorrect. From the original line chart of the Sales data this was difficult to guess, as the trend of sales data for months other than December seems to be increasing gradually.  
+
+```{r Compare the Forecasts against actuals}
+plot(testSet, col = 'blue', lty = 2, ylim=c(0, 100000), main = "Comparison of Forecasts against Actual")
+lines(modelA_Forecast$mean, col = 'purple')
+lines(modelB_Forecast$mean, col = 'orange', lwd = 2)
+# Add legend
+legend(2001,85000, legend=c("Original Data", "ModelA Forecast", "ModelB Forecast"),  col=c( "blue", "purple", "orange"), lty=c(2,1,1), cex=1)
+```  
+
+  
+  ------  
+    
+### ___d. Examine the additive model. Which month has the highest average sales during the year. What does the estimated trend coefficient in the model A mean?___  
+
+#### The additive model based on the traning data is as below:
+     $Y_{t} = -3065.55 + 245.36*t + 1119.38*season2 + 4408.84*season3 + 1462.57*season4 + 1446.19*season5 + 1867.98*season6 + 2988.56*season7 + 3227.58*season8 + 3955.56*season9 + 4821.66*season10 + 11524.64*season11 + 32469.55*season12$
+     
+#### To determine the month with the highest average sales during a year, we can directly review the coefficients in the regression equation for each month. In our model, we see that January has been taken as reference and for each of the other months; the coefficients have been calculated. These coefficients signify the relative increase in sales in the corresponding month compared to January. In our model, the highest coefficient is for season12 i.e. December. Hence, we can deduce December beng the month with the highest average sales during the year. Our deduction can be cross verified against the seasonal graph plotted earlier, which shows that for every year December has the highest sales compared to the remaining months of the year.  
+
+#### The estimated trend coefficient in the Model A signifies the increase in sales over unit increase in time (here, 1 month) on average. In our model, the coefficient is 245.36 and this it signifies that there is an average increase of 245.36 units for every month over its' preceeding month.  
+
+  ------  
+    
+### ___e. Examine the multiplicative model. What does the coefficient of October mean? What does the estimated trend coefficient in the model B mean?___   
+  
+#### The multiplicative model based will take the below form:  
+     $Y_{t} = \alpha_{1} e^{\beta t} \epsilon * \alpha_{2} e^{\beta_{2} season2} e^{\beta_{3} season3} ... e^{\beta_{12} season12}$  
+#### Based on the traning data it takes the shape of the below mathematical equation:     
+     $log(Y_{t}) = 7.646363 + 0.021120*t + 0.282015*season2 + 0.694998*season3 + 0.373873*season4 + 0.421710*season5 + 0.447046*season6 + 0.583380*season7 + 0.546897*season8 + 0.635565*season9 + 0.729490*season10 + 1.200954*season11 + 1.952202*season12$  
+
+#### The coefficient of October i.e season10 is 0.7297490. This signifies that compared to the reference month i.e. season1 (January), the sales in October is greater by ~7.29%.
+
+#### Here, the coefficient of Trend is 0.21120. This signifies that on average, the sales is ~2.11% more for every month over the preceding month.  
+
+  ------  
+    
+### ___f. Use the best model type from part (c) to forecast the sales in January 2002. Think carefully which data to use for model fitting in this case.___  
+  
+####  Based on RMSE, as concluded earlier the Exponential Trend with Multiplicative Seasonality is the better fit. Now, before we can use the model, we need to realign our model by training it on the entire dataset (Jan 1995 to Dec 2001).  
+
+```{r ModelB Retrain}
+# Define the model with linear trend and additive seasonality
+modelB_Retrained <- tslm(salesData ~ trend + season, lambda = 0)
+# Check the model summary for the regression coefficients
+summary(modelB_Retrained)
+# Predict for the validation time period using this model
+modelB_Retrained_Forecast <- forecast(modelB_Retrained, h=1, level = 0)
+modelB_Retrained_Forecast$mean
+```   
+
+#### ___Thus, the forecast for January 2002 is 13,484.06.___   
+
+```{r ModelB_1 Retrain}
+# Define the model with linear trend and additive seasonality
+modelB_1_Retrained <- tslm(log(salesData) ~ trend + season)
+# Check the model summary for the regression coefficients
+summary(modelB_1_Retrained)
+# Predict for the validation time period using this model
+modelB_1_Retrained_Forecast <- forecast(modelB_1_Retrained, h=1, level = 0)
+modelB_1_Retrained_Forecast$mean
+```
+  
+#### Thus, the forecast for January 2002 is 9.509264, which when taken anti-log gives us a projected sales of 
+               $e^{9.509264} = 13,484.06639$ 
+               
+  ----- 
+  
+### ___g. Plot the ACF and PACF plot until lag 20 of the residuals obtained from training set of the best model chosen. Comment on these plots and think what AR(p) model could be a good choice?___  
+
+```{r Plot ACF and PACF}
+#par(mfrow=c(2,1))
+Acf(modelB$residuals,lag.max = 20, plot = TRUE)
+Pacf(modelB$residuals,lag.max = 20, plot = TRUE)
+```  
+  
+#### From the ACF plot, we see the lag at 1 and 2 are significant. This signifies MA(2) model.  
+#### Similarly, PACF plot is also showing the partial correlation at lags 1 and 2 are significant. This signifies AR(2) model.
+#### Assuming the Regression has already removed the Seasonality and Trend leaving the residuals being a stationary time series, the model, we can predict an ARMA(2,2) or ARIMA(2,0,2) as the preferable model to extract the relevant information from the residuals.  
+  
+  ----- 
+  
+### ___h. Fit an AR(p) model as you think appropriate from part (g) to the training set residuals and produce the regression coefficients. Was your intuition at part (h) correct?___  
+
+```{r Fit ARMA model}
+# Fit a ARIMA model based on our intuition from the above question.  
+residualModel <- Arima(modelB$residuals, order = c(2,0,2)) ## (ARIMA(2,0,2) = ARMA(2,2))
+residualModel_Forecast <- forecast(residualModel,h=12)
+summary(residualModel)
+
+```   
+```{r Fit auto-ARIMA model and compare}  
+# Fit an auto ARIMA model 
+auto_ResidualModel <- auto.arima(modelB$residuals)
+auto_ResidualModel_Forecast <- forecast(auto_ResidualModel,h=12)
+summary(auto_ResidualModel)
+
+# Compare the Forecasts from auto ARIMA model and manual ARIMA model
+plot(residualModel_Forecast$mean, lwd=2, col="red", ylim = c(-0.03, 0.15))
+lines(auto_ResidualModel_Forecast$mean, lwd =2, col = "blue")
+legend(2001.5,0.13, legend=c("Manual ARIMA Forecast", "Auto ARIMA Forecast"),  col=c("red", "blue"), lty=1:1, cex=1)
+
+# Compare the Residuals from auto ARIMA model and manual ARIMA model
+plot(residualModel$residuals, col = "red", lwd = 2, main = "Comparison of Residuals from Manual and Auto ARIMA", ylab = "Residuals from ARIMA Models", ylim = c(-0.3, 0.6))
+lines(auto_ResidualModel$residuals, col = "blue", lwd = 2)
+legend(1995,0.58, legend=c("Manual ARIMA Residual", "Auto ARIMA Residual"),  col=c("red", "blue"), lty=1:1, cex=1)
+```
+  
+  ----- 
+  
+### ___i. Now, using the best regression model and AR(p) model, forecast the sales in January 2002. Think carefully which data to use for model fitting in this case.___
+
+####  We have already retrained Model B on the entire dataset to forecast the sales in January 2002 on the basis of Trend and Seasonality. We can better our forecast by now using the AR model created above.  
+```{r Train AR model on entire data and forecast}  
+  
+residualModel_Retrained <- Arima(modelB_Retrained$residuals, order = c(2,0,2)) ## (ARIMA(2,0,2) = ARMA(2,2))
+residualModel_Retrained_Forecast <- forecast(residualModel_Retrained,h=1)
+summary(residualModel_Retrained)
+residualModel_Retrained_Forecast$mean
+```   
+
+####  Thus, the forecast for January 2002 will be ModelB Forecast + Residual Model Forecast i.e. 13,484.06 + 0.05264667 ~ 13,484.11.
